@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minecraft Elytra Flight - Valentine's Special</title>
+  <style>
+  img {
+    max-width: 100%;
+    height: auto;
+    display: none; /* Ensures images don't take up space in HTML */
+}
+
+    /* Keep it pixel-perfect, you magnificent blockhead */
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Press Start 2P', cursive;
+      color: #fff;
+    }
+    #gameCanvas {
+      display: block;
+      background: #2c3e50;
+    }
+    #scoreBoard {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 18px;
+      z-index: 2;
+    }
+    #gameOverScreen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-size: 24px;
+      display: none;
+      z-index: 3;
+    }
+    #restartButton {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+      border: none;
+      background: #e74c3c;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div id="scoreBoard">Score: 0</div>
+  <div id="gameOverScreen">
+    <div>You fell… but don’t worry, I’d catch you IRL. 😉</div>
+    <button id="restartButton">One more try? Or do I need to fly with you next time?</button>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+  <script>
+    (function () {
+      // Setup canvas & context
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+	  
+	    function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+      
+      // UI Elements
+      const scoreBoard = document.getElementById("scoreBoard");
+      const gameOverScreen = document.getElementById("gameOverScreen");
+      const restartButton = document.getElementById("restartButton");
+
+      // Asset placeholders—replace these links with your custom images/sounds
+      const imageAssets = {
+        player: new Image(),
+        zombie: new Image(),
+        spider: new Image(),
+        warden: new Image(),
+        heart: new Image(),
+        background: new Image()
+      };
+      imageAssets.player.src   = "elytra.png";
+      imageAssets.zombie.src   = "zombie.png";
+      imageAssets.spider.src   = "spider.jpg";
+      imageAssets.warden.src   = "warden.jpg";
+      imageAssets.heart.src    = "heart.png";
+      imageAssets.background.src = "bg.jpg";
+	  imageAssets.player.onload = () => {
+		imageAssets.player.width = 90;
+		imageAssets.player.height = 90;
+		};
+
+
+      // Sound placeholders
+      const flapSound  = new Audio("YOUR_FLAP_SOUND_LINK_HERE");
+      const crashSound = new Audio("YOUR_CRASH_SOUND_LINK_HERE");
+
+      // Wait until all assets are loaded before starting the game
+      let assetsLoaded = 0;
+      const totalAssets = Object.keys(imageAssets).length;
+      for (let key in imageAssets) {
+        imageAssets[key].onload = () => {
+          assetsLoaded++;
+          if (assetsLoaded === totalAssets) initGame();
+        }
+      }
+
+      // Game variables
+      let gameOver = false;
+      let obstacles = [];
+      let powerUps = [];
+      let score = 0;
+      let baseSpeed = 2;   // gradually increases over time
+      let bonusSpeed = 0;  // increased when power-up is active
+      let powerUpActive = false;
+      let powerUpTimer = 0;
+      let keys = {};
+
+      // Player object using image asset (you can swap images later if desired)
+      const player = {
+        x: 100,
+        y: canvas.height / 2,
+        width: 80,
+        height: 80,
+        draw() {
+          ctx.drawImage(imageAssets.player, this.x, this.y, this.width, this.height);
+        },
+        update() {
+          const moveSpeed = 5;
+          if (keys["ArrowUp"] || keys["Up"]) {
+            this.y -= moveSpeed;
+            playFlap();
+          }
+          if (keys["ArrowDown"] || keys["Down"]) {
+            this.y += moveSpeed;
+            playFlap();
+          }
+          if (keys["ArrowLeft"] || keys["Left"]) {
+            this.x -= moveSpeed;
+            playFlap();
+          }
+          if (keys["ArrowRight"] || keys["Right"]) {
+            this.x += moveSpeed;
+            playFlap();
+          }
+          // No off-screen acrobatics allowed
+          if (this.x < 0) this.x = 0;
+          if (this.y < 0) this.y = 0;
+          if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+          if (this.y + this.height > canvas.height) this.y = canvas.height - this.height;
+        }
+      };
+
+      // Obstacle class – choose your foe: zombie, spider, or warden
+      class Obstacle {
+        constructor(type) {
+          this.type = type;
+          if (type === "zombie") {
+            this.width = 50;
+            this.height = 50;
+          } else if (type === "spider") {
+            this.width = 40;
+            this.height = 40;
+          } else if (type === "warden") {
+            this.width = 60;
+            this.height = 60;
+          }
+          this.x = canvas.width + Math.random() * 200;
+          this.y = Math.random() * (canvas.height - this.height);
+        }
+        update() {
+          this.x -= (baseSpeed + bonusSpeed);
+        }
+        draw() {
+          let img;
+          if (this.type === "zombie") img = imageAssets.zombie;
+          else if (this.type === "spider") img = imageAssets.spider;
+          else if (this.type === "warden") img = imageAssets.warden;
+          if (img) ctx.drawImage(img, this.x, this.y, this.width, this.height);
+        }
+      }
+
+      // Power-up class: Lover’s Heart to boost your speed (and your ego)
+      class PowerUp {
+        constructor() {
+          this.width = 40;
+          this.height = 40;
+          this.x = canvas.width + Math.random() * 300;
+          this.y = Math.random() * (canvas.height - this.height);
+        }
+        update() {
+          this.x -= (baseSpeed + bonusSpeed);
+        }
+        draw() {
+          ctx.drawImage(imageAssets.heart, this.x, this.y, this.width, this.height);
+        }
+      }
+
+      // Parallax background layers for that extra pixel-art pizzazz
+      const backgroundLayers = [
+        { speed: 0.5, blocks: [] },
+        { speed: 1, blocks: [] }
+      ];
+      backgroundLayers.forEach(layer => {
+        for (let i = 0; i < 50; i++) {
+          layer.blocks.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            size: 4 + Math.random() * 4
+          });
+        }
+      });
+
+      // Collision detection
+      function isColliding(a, b) {
+        return (
+          a.x < b.x + b.width &&
+          a.x + a.width > b.x &&
+          a.y < b.y + b.height &&
+          a.y + a.height > b.y
+        );
+      }
+
+      // Sound triggers
+      function playFlap() {
+        if (flapSound.paused) {
+          flapSound.currentTime = 0;
+          flapSound.play().catch(() => {});
+        }
+      }
+      function playCrash() {
+        crashSound.currentTime = 0;
+        crashSound.play().catch(() => {});
+      }
+
+      // Keyboard controls
+      window.addEventListener("keydown", e => { keys[e.key] = true; });
+      window.addEventListener("keyup", e => { keys[e.key] = false; });
+
+      // Touch controls for mobile daredevils
+      let touchStartX = 0, touchStartY = 0;
+      canvas.addEventListener("touchstart", e => {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      });
+      canvas.addEventListener("touchmove", e => {
+        let dx = e.touches[0].clientX - touchStartX;
+        let dy = e.touches[0].clientY - touchStartY;
+        if (Math.abs(dx) > 10) {
+          keys[dx > 0 ? "ArrowRight" : "ArrowLeft"] = true;
+          keys[dx > 0 ? "ArrowLeft" : "ArrowRight"] = false;
+        }
+        if (Math.abs(dy) > 10) {
+          keys[dy > 0 ? "ArrowDown" : "ArrowUp"] = true;
+          keys[dy > 0 ? "ArrowUp" : "ArrowDown"] = false;
+        }
+      });
+      canvas.addEventListener("touchend", () => {
+        keys["ArrowUp"] = keys["ArrowDown"] = keys["ArrowLeft"] = keys["ArrowRight"] = false;
+      });
+
+      // Restart button
+      restartButton.addEventListener("click", resetGame);
+
+      // Initialize game and start loop after assets are loaded
+      function initGame() {
+        gameOver = false;
+        obstacles = [];
+        powerUps = [];
+        score = 0;
+        baseSpeed = 2;
+        bonusSpeed = 0;
+        powerUpActive = false;
+        powerUpTimer = 0;
+        player.x = 100;
+        player.y = canvas.height / 2;
+        gameOverScreen.style.display = "none";
+        loop();
+      }
+
+      // Reset game
+      function resetGame() {
+        initGame();
+      }
+
+      // Main game loop
+      function loop() {
+        if (gameOver) return;
+        requestAnimationFrame(loop);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw background – either your custom image or a fallback gradient + parallax blocks
+        drawBackground();
+
+        // Update and render the player
+        player.update();
+        player.draw();
+
+        // Randomly spawn obstacles
+        if (Math.random() < 0.02) {
+          const types = ["zombie", "spider", "warden"];
+          const type = types[Math.floor(Math.random() * types.length)];
+          obstacles.push(new Obstacle(type));
+        }
+
+        // Randomly spawn power-ups (Lover’s Heart)
+        if (Math.random() < 0.005) {
+          powerUps.push(new PowerUp());
+        }
+
+        // Update and render obstacles
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+          const obs = obstacles[i];
+          obs.update();
+          obs.draw();
+          if (obs.x + obs.width < 0) {
+            obstacles.splice(i, 1);
+            continue;
+          }
+          if (isColliding(player, obs)) {
+            playCrash();
+            gameOver = true;
+            gameOverScreen.style.display = "flex";
+          }
+        }
+
+        // Update and render power-ups
+        for (let i = powerUps.length - 1; i >= 0; i--) {
+          const pu = powerUps[i];
+          pu.update();
+          pu.draw();
+          if (pu.x + pu.width < 0) {
+            powerUps.splice(i, 1);
+            continue;
+          }
+          if (isColliding(player, pu)) {
+            powerUpActive = true;
+            powerUpTimer = 300; // lasts ~5 seconds at 60fps
+            bonusSpeed = 3;     // temporary speed boost
+            // If you have a special powered-up player sprite, swap it here!
+            powerUps.splice(i, 1);
+          }
+        }
+
+        // Manage power-up duration
+        if (powerUpActive) {
+          powerUpTimer--;
+          if (powerUpTimer <= 0) {
+            powerUpActive = false;
+            bonusSpeed = 0;
+          }
+        }
+
+        // Gradually increase base speed for added challenge
+        baseSpeed += 0.001;
+
+        // Update score
+        score++;
+        scoreBoard.innerText = "Score: " + score;
+      }
+
+      // Draw background function: try your custom image first, else fallback
+      function drawBackground() {
+        if (imageAssets.background.complete) {
+          ctx.drawImage(imageAssets.background, 0, 0, canvas.width, canvas.height);
+        } else {
+          let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+          grad.addColorStop(0, "#1a1a2e");
+          grad.addColorStop(1, "#16213e");
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        // Optional: draw parallax blocks for extra pixel flair
+        backgroundLayers.forEach(layer => {
+          ctx.fillStyle = "rgba(255,255,255,0.1)";
+          layer.blocks.forEach(block => {
+            ctx.fillRect(block.x, block.y, block.size, block.size);
+            block.x -= layer.speed;
+            if (block.x < -block.size) {
+              block.x = canvas.width + Math.random() * 50;
+              block.y = Math.random() * canvas.height;
+            }
+          });
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
