@@ -5,23 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Minecraft Elytra Flight - Valentine's Special</title>
   <style>
-  img {
-    max-width: 100%;
-    height: auto;
-    display: none; /* Ensures images don't take up space in HTML */
-}
-
     /* Keep it pixel-perfect, you magnificent blockhead */
     body {
       margin: 0;
       overflow: hidden;
-      background: #000;
+      background: #000; /* Fallback color */
       font-family: 'Press Start 2P', cursive;
       color: #fff;
     }
+
+    #video-bg {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      min-width: 100%;
+      min-height: 100%;
+      z-index: -1; /* Behind all content */
+    }
+
     #gameCanvas {
       display: block;
-      background: #2c3e50;
+      /* Removed the background, as the video is the background now. */
+      position: relative; /*  Important for z-index of other elements*/
+      z-index:1;        /* Make the canvas appear above the video*/
+
     }
     #scoreBoard {
       position: absolute;
@@ -54,15 +61,27 @@
       background: #e74c3c;
       color: #fff;
     }
+      img {
+    max-width: 100%;
+    height: auto;
+    display: none; /* Ensures images don't take up space in HTML */
+}
   </style>
 </head>
 <body>
+  <video autoplay loop muted id="video-bg">
+    <source src="bg.mp4" type="video/mp4">
+    <!-- Add more source tags for different video formats (e.g., webm, ogg) if needed -->
+    Your browser does not support the video tag.
+  </video>
+
   <div id="scoreBoard">Score: 0</div>
   <div id="gameOverScreen">
     <div>You fell… but don’t worry, I’d catch you IRL. 😉</div>
     <button id="restartButton">One more try? Or do I need to fly with you next time?</button>
   </div>
   <canvas id="gameCanvas"></canvas>
+
   <script>
     (function () {
       // Setup canvas & context
@@ -70,14 +89,14 @@
       const ctx = canvas.getContext("2d");
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-	  
-	    function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-}
-window.addEventListener("resize", resizeCanvas);
-resizeCanvas();
-      
+
+      function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+
       // UI Elements
       const scoreBoard = document.getElementById("scoreBoard");
       const gameOverScreen = document.getElementById("gameOverScreen");
@@ -90,33 +109,35 @@ resizeCanvas();
         spider: new Image(),
         warden: new Image(),
         heart: new Image(),
-        background: new Image()
+        //background: new Image() // No longer needed, using video background
       };
       imageAssets.player.src   = "elytra.png";
       imageAssets.zombie.src   = "zombie.png";
       imageAssets.spider.src   = "spider.jpg";
       imageAssets.warden.src   = "warden.jpg";
       imageAssets.heart.src    = "heart.png";
-      imageAssets.background.src = "bg.jpg";
-	  imageAssets.player.onload = () => {
-		imageAssets.player.width = 90;
-		imageAssets.player.height = 90;
-		};
+      //imageAssets.background.src = "bg.jpg"; // Removed
+	    imageAssets.player.onload = () => {
+		    imageAssets.player.width = 90;
+		    imageAssets.player.height = 90;
+		  };
 
 
       // Sound placeholders
-      const flapSound  = new Audio("YOUR_FLAP_SOUND_LINK_HERE");
-      const crashSound = new Audio("YOUR_CRASH_SOUND_LINK_HERE");
+      const flapSound  = new Audio("");  // Usually the Elytra sound
+      const crashSound = new Audio("crash.mp3");
+      const heartCollectSound = new Audio("heart.mp3"); // Placeholder for heart sound
 
-      // Wait until all assets are loaded before starting the game
+      // Wait until all *image* assets are loaded.  Sounds load asynchronously.
       let assetsLoaded = 0;
-      const totalAssets = Object.keys(imageAssets).length;
+      const totalAssets = Object.keys(imageAssets).length; // Count only images
       for (let key in imageAssets) {
         imageAssets[key].onload = () => {
           assetsLoaded++;
           if (assetsLoaded === totalAssets) initGame();
-        }
+        };
       }
+
 
       // Game variables
       let gameOver = false;
@@ -129,7 +150,7 @@ resizeCanvas();
       let powerUpTimer = 0;
       let keys = {};
 
-      // Player object using image asset (you can swap images later if desired)
+      // Player object
       const player = {
         x: 100,
         y: canvas.height / 2,
@@ -164,7 +185,7 @@ resizeCanvas();
         }
       };
 
-      // Obstacle class – choose your foe: zombie, spider, or warden
+      // Obstacle class
       class Obstacle {
         constructor(type) {
           this.type = type;
@@ -193,7 +214,7 @@ resizeCanvas();
         }
       }
 
-      // Power-up class: Lover’s Heart to boost your speed (and your ego)
+      // Power-up class: Lover’s Heart
       class PowerUp {
         constructor() {
           this.width = 40;
@@ -209,7 +230,7 @@ resizeCanvas();
         }
       }
 
-      // Parallax background layers for that extra pixel-art pizzazz
+      // Parallax background layers  (optional, with video bg)
       const backgroundLayers = [
         { speed: 0.5, blocks: [] },
         { speed: 1, blocks: [] }
@@ -224,6 +245,7 @@ resizeCanvas();
         }
       });
 
+
       // Collision detection
       function isColliding(a, b) {
         return (
@@ -234,27 +256,35 @@ resizeCanvas();
         );
       }
 
-      // Sound triggers
-      function playFlap() {
-        if (flapSound.paused) {
-          flapSound.currentTime = 0;
-          flapSound.play().catch(() => {});
+    // Sound triggers (with proper audio handling)
+        function playFlap() {
+          // Only restart if paused.  Avoids rapid restarts.
+            if (flapSound.paused) {
+                flapSound.currentTime = 0;
+                flapSound.play().catch(err => console.error("Flap sound error:", err));
+            }
         }
-      }
-      function playCrash() {
-        crashSound.currentTime = 0;
-        crashSound.play().catch(() => {});
+        function playCrash() {
+          // Always restart crash sound
+            crashSound.currentTime = 0;
+            crashSound.play().catch(err => console.error("Crash sound error:", err));
+        }
+        
+        function playHeartCollect() {
+          heartCollectSound.currentTime = 0; // Reset to start
+          heartCollectSound.play().catch(err => console.error("Heart collect sound error:", err));
       }
 
       // Keyboard controls
       window.addEventListener("keydown", e => { keys[e.key] = true; });
       window.addEventListener("keyup", e => { keys[e.key] = false; });
 
-      // Touch controls for mobile daredevils
+      // Touch controls
       let touchStartX = 0, touchStartY = 0;
       canvas.addEventListener("touchstart", e => {
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
+        e.preventDefault(); // Prevent page scrolling
       });
       canvas.addEventListener("touchmove", e => {
         let dx = e.touches[0].clientX - touchStartX;
@@ -267,6 +297,7 @@ resizeCanvas();
           keys[dy > 0 ? "ArrowDown" : "ArrowUp"] = true;
           keys[dy > 0 ? "ArrowUp" : "ArrowDown"] = false;
         }
+         e.preventDefault();
       });
       canvas.addEventListener("touchend", () => {
         keys["ArrowUp"] = keys["ArrowDown"] = keys["ArrowLeft"] = keys["ArrowRight"] = false;
@@ -275,7 +306,7 @@ resizeCanvas();
       // Restart button
       restartButton.addEventListener("click", resetGame);
 
-      // Initialize game and start loop after assets are loaded
+      // Initialize and start game loop
       function initGame() {
         gameOver = false;
         obstacles = [];
@@ -288,10 +319,14 @@ resizeCanvas();
         player.x = 100;
         player.y = canvas.height / 2;
         gameOverScreen.style.display = "none";
-        loop();
+        // Ensure other sounds are paused if they might be playing.
+        if (flapSound) flapSound.pause();
+        if (crashSound) crashSound.pause();
+
+        loop(); // Start the game loop
       }
 
-      // Reset game
+      // Reset game (called on restart)
       function resetGame() {
         initGame();
       }
@@ -302,21 +337,21 @@ resizeCanvas();
         requestAnimationFrame(loop);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw background – either your custom image or a fallback gradient + parallax blocks
-        drawBackground();
+        // Draw background –  removed the drawbackground as its video
+        //drawBackground(); // No longer needed
 
         // Update and render the player
         player.update();
         player.draw();
 
-        // Randomly spawn obstacles
+        // Spawn obstacles
         if (Math.random() < 0.02) {
           const types = ["zombie", "spider", "warden"];
           const type = types[Math.floor(Math.random() * types.length)];
           obstacles.push(new Obstacle(type));
         }
 
-        // Randomly spawn power-ups (Lover’s Heart)
+        // Spawn power-ups
         if (Math.random() < 0.005) {
           powerUps.push(new PowerUp());
         }
@@ -334,6 +369,7 @@ resizeCanvas();
             playCrash();
             gameOver = true;
             gameOverScreen.style.display = "flex";
+              return; // Exit the loop immediately
           }
         }
 
@@ -347,10 +383,10 @@ resizeCanvas();
             continue;
           }
           if (isColliding(player, pu)) {
+              playHeartCollect(); // Play sound effect
             powerUpActive = true;
-            powerUpTimer = 300; // lasts ~5 seconds at 60fps
-            bonusSpeed = 3;     // temporary speed boost
-            // If you have a special powered-up player sprite, swap it here!
+            powerUpTimer = 300;  // ~5 seconds
+            bonusSpeed = 3;
             powerUps.splice(i, 1);
           }
         }
@@ -364,7 +400,7 @@ resizeCanvas();
           }
         }
 
-        // Gradually increase base speed for added challenge
+        // Increase base speed
         baseSpeed += 0.001;
 
         // Update score
@@ -372,30 +408,9 @@ resizeCanvas();
         scoreBoard.innerText = "Score: " + score;
       }
 
-      // Draw background function: try your custom image first, else fallback
-      function drawBackground() {
-        if (imageAssets.background.complete) {
-          ctx.drawImage(imageAssets.background, 0, 0, canvas.width, canvas.height);
-        } else {
-          let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-          grad.addColorStop(0, "#1a1a2e");
-          grad.addColorStop(1, "#16213e");
-          ctx.fillStyle = grad;
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
-        // Optional: draw parallax blocks for extra pixel flair
-        backgroundLayers.forEach(layer => {
-          ctx.fillStyle = "rgba(255,255,255,0.1)";
-          layer.blocks.forEach(block => {
-            ctx.fillRect(block.x, block.y, block.size, block.size);
-            block.x -= layer.speed;
-            if (block.x < -block.size) {
-              block.x = canvas.width + Math.random() * 50;
-              block.y = Math.random() * canvas.height;
-            }
-          });
-        });
-      }
+
+
+     //Removed the draw background function, video is now backgroun
     })();
   </script>
 </body>
